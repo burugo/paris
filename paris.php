@@ -249,7 +249,7 @@
          * If the supplied class has a public static property
          * named $_table, the value of this property will be
          * returned. If not, the class name will be converted using
-         * the _t method method.
+         * the _class_name_to_table_name method method.
          */
         protected static function _get_table_name($class_name) {
             $specified_table_name = self::_get_static_property($class_name, '_table');
