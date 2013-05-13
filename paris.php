@@ -56,13 +56,17 @@
          * return an instance or instances of this class.
          */
         protected $_class_name;
-
+        protected $_sort = array();
         /**
          * Set the name of the class which the wrapped
          * methods should return instances of.
          */
         public function set_class_name($class_name) {
             $this->_class_name = $class_name;
+        }
+
+        public function get_class_name(){
+            return $this->_class_name;
         }
 
         /**
@@ -139,8 +143,62 @@
         public function create($data=null) {
             return $this->_create_model_instance(parent::create($data));
         }
+
+        /**
+         * this is for cache 
+         * @return string 
+         */
+        public function create_cache_key(){
+            $query = $this->_build_select();
+            $key = self::_create_cache_key($query,$this->_values);
+            $this->reset();
+            return $key;
+        }
+
+        public function limit($limit=null){
+            if(isset($limit)) return parent::limit($limit);
+            return $this->_limit;
+        }
+
+        public function sort($sorts=null){
+            if(isset($sorts)){
+                    $sorts = tup($sorts);
+                    foreach ($sorts as $sort) {
+                        if (!($sort instanceof sort)){
+                            $sort = asc($sort);
+                        }       
+                        $this->order_by($sort);
+                    }
+                    return $this;
+            }          
+            return $this->_sort;
+        }
+
+        protected function order_by($sort){
+            $this->_sort[]=$sort;
+            $_func = "order_by_".get_class($sort);
+            $this->$_func($sort->col);
+        }
     }
 
+    class sort{
+         public $col;
+         public function __construct($col){
+            $this->col = $col;
+         }
+         public function __toString(){
+            return sprintf("< sort:%s %s >" , get_class($this) , $this->col);
+         }
+    }
+    class asc extends sort{}
+    class  desc extends sort{}
+    function asc($col){
+        return new asc($col);
+    }
+    function desc($col){
+        return new desc($col);
+    }
+    
     /**
      * Model base class. Your model objects should extend
      * this class. A minimal subclass would look like:
@@ -191,7 +249,7 @@
          * If the supplied class has a public static property
          * named $_table, the value of this property will be
          * returned. If not, the class name will be converted using
-         * the _class_name_to_table_name method method.
+         * the _t method method.
          */
         protected static function _get_table_name($class_name) {
             $specified_table_name = self::_get_static_property($class_name, '_table');
@@ -251,8 +309,8 @@
          * its find_one or find_many methods are called.
          */
         public static function factory($class_name, $connection_name = null) {
-            $class_name = self::$auto_prefix_models . $class_name;
-            $table_name = self::_get_table_name($class_name);
+            $prefix_class_name = self::$auto_prefix_models . $class_name;
+            $table_name = self::_get_table_name($prefix_class_name);
 
             if ($connection_name == null) {
                $connection_name = self::_get_static_property(
