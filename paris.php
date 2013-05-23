@@ -49,7 +49,7 @@
      * directly. It is used internally by the Model base
      * class.
      */
-    class ORMWrapper extends ORM {
+    class ORMWrapper extends ORM implements Serializable {
 
         /**
          * The wrapped find_one and find_many classes will
@@ -68,7 +68,9 @@
         public function get_class_name(){
             return $this->_class_name;
         }
-
+        public function get_table_name(){
+            return $this->_table_name;
+        }
         /**
          * Add a custom filter to the method chain specified on the
          * model class. This allows custom queries to be added
@@ -179,6 +181,19 @@
             $_func = "order_by_".get_class($sort);
             $this->$_func($sort->col);
         }
+
+        public function serialize(){
+            $data = array($this->_table_name,$this->_data,$this->_dirty_fields,$this->_expr_fields,$this->_is_new);
+           return serialize($data);
+        }
+
+        public function unserialize($data){
+            $data = unserialize($data);
+            self::__construct($data[0],$data[1]);
+            $this->_dirty_fields = $data[2];
+            $this->_expr_fields = $data[3];
+            $this->_is_new = $data[4];
+        }
     }
 
     class sort{
@@ -249,14 +264,14 @@
          * If the supplied class has a public static property
          * named $_table, the value of this property will be
          * returned. If not, the class name will be converted using
-         * the _class_name_to_table_name method method.
+         * the _class_name_to_table_name  method method.
          */
         protected static function _get_table_name($class_name) {
             $specified_table_name = self::_get_static_property($class_name, '_table');
             if (is_null($specified_table_name)) {
-                return self::_class_name_to_table_name($class_name);
+                $specified_table_name = self::_class_name_to_table_name($class_name);
             }
-            return $specified_table_name;
+            return  self::$auto_prefix_models.$specified_table_name;
         }
 
         /**
@@ -292,11 +307,11 @@
          * argument (the name of the table) with the default foreign key column
          * suffix appended.
          */
-        protected static function _build_foreign_key_name($specified_foreign_key_name, $table_name) {
+        protected static function _build_foreign_key_name($specified_foreign_key_name, $class_name) {
             if (!is_null($specified_foreign_key_name)) {
                 return $specified_foreign_key_name;
             }
-            return $table_name . self::DEFAULT_FOREIGN_KEY_SUFFIX;
+            return self::_class_name_to_table_name($class_name) . self::DEFAULT_FOREIGN_KEY_SUFFIX;
         }
 
         /**
@@ -309,9 +324,7 @@
          * its find_one or find_many methods are called.
          */
         public static function factory($class_name, $connection_name = null) {
-            $prefix_class_name = self::$auto_prefix_models . $class_name;
-            $table_name = self::_get_table_name($prefix_class_name);
-
+            $table_name = self::_get_table_name($class_name);
             if ($connection_name == null) {
                $connection_name = self::_get_static_property(
                    $class_name,
@@ -332,8 +345,8 @@
          * the method chain.
          */
         protected function _has_one_or_many($associated_class_name, $foreign_key_name=null) {
-            $base_table_name = self::_get_table_name(get_class($this));
-            $foreign_key_name = self::_build_foreign_key_name($foreign_key_name, $base_table_name);
+            $base_class_name = get_class($this);
+            $foreign_key_name = self::_build_foreign_key_name($foreign_key_name, $base_class_name);
             return self::factory($associated_class_name)->where($foreign_key_name, $this->id());
         }
 
@@ -358,8 +371,7 @@
          * the foreign key is on the base table.
          */
         protected function belongs_to($associated_class_name, $foreign_key_name=null) {
-            $associated_table_name = self::_get_table_name($associated_class_name);
-            $foreign_key_name = self::_build_foreign_key_name($foreign_key_name, $associated_table_name);
+            $foreign_key_name = self::_build_foreign_key_name($foreign_key_name, $associated_class_name);
             $associated_object_id = $this->$foreign_key_name;
             return self::factory($associated_class_name)->where_id_is($associated_object_id);
         }
@@ -390,8 +402,8 @@
             $associated_table_id_column = self::_get_id_column_name($associated_class_name);
 
             // Get the column names for each side of the join table
-            $key_to_base_table = self::_build_foreign_key_name($key_to_base_table, $base_table_name);
-            $key_to_associated_table = self::_build_foreign_key_name($key_to_associated_table, $associated_table_name);
+            $key_to_base_table = self::_build_foreign_key_name($key_to_base_table, $base_class_name);
+            $key_to_associated_table = self::_build_foreign_key_name($key_to_associated_table, $associated_class_name);
 
             return self::factory($associated_class_name)
                 ->select("{$associated_table_name}.*")
